@@ -4,7 +4,7 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/or-zettel
-;; Version: 0.1.1
+;; Version: 0.2.1
 ;; Keywords: org-roam, convenience
 ;; Package-Requires: ((emacs "31.1") (org "9.8.10") (org-roam "2.3.1"))
 ;;
@@ -83,11 +83,16 @@
   :type 'boolean
   :group 'or-zettel)
 
-(defcustom or-zettel-meta-section-re '("Links" "References" "Notes" "Footnotes")
-  "Regex for headings to treat as meta sections.
+(defcustom or-zettel-meta-heading-text-re nil
+  "Regex for heading texts to treat as meta sections.
 The value is specified as a regexp string or a list of heading titles."
   :type '(choice (string :tag "Regexp")
-                 (repeat :tag "List of heading text" string))
+                 (repeat :tag "List of heading texts" string))
+  :group 'or-zettel)
+
+(defcustom or-zettel-meta-heading-tags nil
+  "List of heading tags to treat as meta sections."
+  :type '(repeat :tag "List of heading tags" string)
   :group 'or-zettel)
 
 (defcustom or-zettel-footnote-fontify nil
@@ -155,27 +160,34 @@ Leaves point ready for typing at the end of the new tag."
 (defun or-zettel--overlays-update (&rest _)
   "Refresh meta section overlays across the buffer."
   (or-zettel--overlays-delete-all)
-  (let ((re (concat "^\\(\\*+\\)[ \t]+.*\\("
-                    (cond ((listp or-zettel-meta-section-re)
-                           (regexp-opt or-zettel-meta-section-re))
-                          (t or-zettel-meta-section-re))
-                    "\\)$")))
+  (let ((title-re (cond ((listp or-zettel-meta-heading-text-re)
+                         (concat "\\("
+                                 (regexp-opt or-zettel-meta-heading-text-re)
+                                 "\\)"))
+                        (t or-zettel-meta-heading-text-re))))
     (save-excursion
       (save-restriction
         (widen)
         (goto-char (point-min))
-        (while (re-search-forward re nil t)
-          (let* ((level (length (match-string 1)))
-                 (body-start (1+ (line-end-position)))
-                 (boundary-regex (format "^\\*\\{1,%d\\}[ \t]" level))
-                 (body-end (save-excursion
-                             (if (re-search-forward boundary-regex nil t)
-                                 (match-beginning 0)
-                               (point-max)))))
-            (when (< body-start body-end)
-              (let ((ov (make-overlay body-start body-end)))
-                (overlay-put ov 'or-zettel-meta-section t)
-                (overlay-put ov 'face 'or-zettel-meta-section-text)))))))))
+        (while (re-search-forward org-complex-heading-regexp nil t)
+          (let ((stars (match-string 1))
+                (title (match-string 4))
+                (tags  (match-string 5)))
+            (when (or (string-match-p title-re title)
+                      (when tags
+                        (seq-intersection or-zettel-meta-heading-tags
+                                          (string-split tags ":" t))))
+              (let* ((level (length stars))
+                     (body-start (1+ (line-end-position)))
+                     (boundary-regex (format "^\\*\\{1,%d\\}[ \t]" level))
+                     (body-end (save-excursion
+                                 (if (re-search-forward boundary-regex nil t)
+                                     (match-beginning 0)
+                                   (point-max)))))
+                (when (< body-start body-end)
+                  (let ((ov (make-overlay body-start body-end)))
+                    (overlay-put ov 'or-zettel-meta-section t)
+                    (overlay-put ov 'face 'or-zettel-meta-section-text)))))))))))
 
 (defun or-zettel--overlays-update-trigger (_beg _end _len)
   "Schedule a delayed overlay refresh after buffer edits."
