@@ -4,7 +4,7 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/or-zettel
-;; Version: 0.2.1
+;; Version: 0.2.2
 ;; Keywords: org-roam, convenience
 ;; Package-Requires: ((emacs "31.1") (org "9.8.10") (org-roam "2.3.1"))
 ;;
@@ -169,11 +169,13 @@ Leaves point ready for typing at the end of the new tag."
       (save-restriction
         (widen)
         (goto-char (point-min))
-        (while (re-search-forward org-complex-heading-regexp nil t)
+        (while (and org-complex-heading-regexp
+                    (re-search-forward org-complex-heading-regexp nil t))
           (let ((stars (match-string 1))
                 (title (match-string 4))
                 (tags  (match-string 5)))
-            (when (or (string-match-p title-re title)
+            (when (or (and title-re title
+                           (string-match-p title-re title))
                       (when tags
                         (seq-intersection or-zettel-meta-heading-tags
                                           (string-split tags ":" t))))
