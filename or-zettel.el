@@ -4,7 +4,7 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/or-zettel
-;; Version: 0.2.2
+;; Version: 0.3.1
 ;; Keywords: org-roam, convenience
 ;; Package-Requires: ((emacs "31.1") (org "9.8.10") (org-roam "2.3.1"))
 ;;
@@ -78,9 +78,14 @@
   :type '(repeat string)
   :group 'or-zettel)
 
-(defcustom or-zettel-meta-section-fontify t
-  "Non-nil to enable custom fontification overlays for meta sections."
-  :type 'boolean
+(defcustom or-zettel-meta-keywords '("Usage Logs" "Links" "References" "Notes")
+  "TBD."
+  :type '(repeat :tag "Keyword" string)
+  :group 'or-zettel)
+
+(defcustom or-zettel-meta-heading-tags '("meta")
+  "List of heading tags to treat as meta sections."
+  :type '(repeat :tag "List of heading tags" string)
   :group 'or-zettel)
 
 (defcustom or-zettel-meta-heading-text-re nil
@@ -90,9 +95,9 @@ The value is specified as a regexp string or a list of heading titles."
                  (repeat :tag "List of heading texts" string))
   :group 'or-zettel)
 
-(defcustom or-zettel-meta-heading-tags nil
-  "List of heading tags to treat as meta sections."
-  :type '(repeat :tag "List of heading tags" string)
+(defcustom or-zettel-meta-section-fontify t
+  "Non-nil to enable custom fontification overlays for meta sections."
+  :type 'boolean
   :group 'or-zettel)
 
 (defcustom or-zettel-footnote-fontify nil
@@ -107,6 +112,80 @@ The value is specified as a regexp string or a list of heading titles."
 (defface or-zettel-footnote-text '((t :height 0.85))
   "Face applied to the body text of Org footnote text."
   :group 'or-zettel)
+
+;;; Meta Headings
+
+(defun or-zettel-meta-insert (keyword)
+  "Insert a headline with KEYWORD and `or-zettel-meta-heading-tags` at the end of the buffer."
+  (interactive
+   (list (completing-read "Meta keyword: " or-zettel-meta-keywords nil t)))
+  (let ((existing-headings nil) ; list of (keyword . buffer-position)
+        keyword-exists-p move-to)
+    (save-excursion
+      (save-restriction
+        (widen)
+        (goto-char (point-min))
+
+        ;; The meta heading already exists.
+        (while (re-search-forward org-complex-heading-regexp nil t)
+          (let* ((title (string-trim (match-string 4)))
+                 (pos (match-beginning 0))
+                 (tags (string-split (string-trim (match-string 5)) ":" t)))
+            (when (and title
+                       (seq-intersection or-zettel-meta-heading-tags tags))
+              (when (string= title keyword)
+                (setq keyword-exists-p t))
+              (when-let* ((idx (seq-position or-zettel-meta-keywords title #'string=)))
+                (push (cons title pos) existing-headings)))))
+
+        ;; The meta heading does not already exist.
+        (unless keyword-exists-p
+          (let* ((target-idx (seq-position or-zettel-meta-keywords keyword #'string=))
+                 insert-before-pos insert-after-pos)
+            (unless target-idx
+              (user-error "Keyword '%s' not found in `or-zettel-meta-keywords`" keyword))
+
+            (setq existing-headings
+                  (sort existing-headings (lambda (a b) (< (cdr a) (cdr b)))))
+
+            ;; Find the first existing heading that appears AFTER target.
+            (catch 'found
+              (dolist (item existing-headings)
+                (let* ((item-kw (car item))
+                       (item-pos (cdr item))
+                       (item-idx (seq-position or-zettel-meta-keywords item-kw #'string=)))
+                  (when (> item-idx target-idx)
+                    (setq insert-before-pos item-pos)
+                    (throw 'found t)))))
+
+            ;; If no succeeding heading exists, find the last existing heading that appears BEFORE target
+            (unless insert-before-pos
+              (let ((prev-pos nil))
+                (dolist (item existing-headings)
+                  (let* ((item-kw (car item))
+                         (item-pos (cdr item))
+                         (item-idx (seq-position or-zettel-meta-keywords item-kw #'string=)))
+                    (when (< item-idx target-idx)
+                      (setq prev-pos item-pos))))
+                (when prev-pos
+                  ;; Position at the end of that previous heading's subtree
+                  (goto-char prev-pos)
+                  (org-end-of-subtree t t)
+                  (setq insert-after-pos (point)))))
+
+            ;; Navigate to insertion point.
+            (cond (insert-before-pos (goto-char insert-before-pos))
+                  (insert-after-pos (goto-char insert-after-pos))
+                  (t (goto-char (point-max)) (unless (bolp) (insert "\n"))))
+
+            ;; Format and insert the new heading with tags.
+            (let ((tags-str (if or-zettel-meta-heading-tags
+                                (concat ":" (string-join or-zettel-meta-heading-tags ":") ":")
+                              "")))
+              (unless (bolp) (insert "\n"))
+              (insert "* " keyword " " tags-str "\n\n")
+              (setq move-to (point)))))))
+    (goto-char move-to)))
 
 ;;; Zettel Relationships
 
@@ -125,7 +204,7 @@ Leaves point ready for typing at the end of the new tag."
       (unless (re-search-forward re-heading nil t)
         (goto-char (point-max))
         (insert (concat "\n* " or-zettel-relationship-section)))
-      (org-end-of-meta-data t)
+      (org-end-of-meta-data nil)
       (let* ((start-pos (point))
              (end-pos (save-excursion
                         (if (re-search-forward "^\\*+" nil t)
@@ -140,8 +219,8 @@ Leaves point ready for typing at the end of the new tag."
               (goto-char last-match)
               (insert (concat "\n\n" relationship " ")))
           (goto-char start-pos)
-          (unless (bolp) (insert "\n\n"))
-          (insert (concat relationship " "))))))
+          ;; (unless (bolp) (insert "\n\n"))
+          (insert (concat "\n" relationship " "))))))
   (org-reveal))
 
 ;;; Section Overlays
@@ -213,6 +292,7 @@ Leaves point ready for typing at the end of the new tag."
 
 (defvar-keymap or-zettel-mode-prefix-map
   :doc "Keymap for `or-zettel-mode' under prefix."
+  "h" #'or-zettel-meta-insert
   "r" #'or-zettel-relationship-insert)
 
 (keymap-set or-zettel-mode-map or-zettel-mode-prefix or-zettel-mode-prefix-map)
