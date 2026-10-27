@@ -4,7 +4,7 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/or-zettel
-;; Version: 0.3.1
+;; Version: 0.3.2
 ;; Keywords: org-roam, convenience
 ;; Package-Requires: ((emacs "31.1") (org "9.8.10") (org-roam "2.3.1"))
 ;;
@@ -130,7 +130,8 @@ The value is specified as a regexp string or a list of heading titles."
         (while (re-search-forward org-complex-heading-regexp nil t)
           (let* ((title (string-trim (match-string 4)))
                  (pos (match-beginning 0))
-                 (tags (string-split (string-trim (match-string 5)) ":" t)))
+                 (tags (when-let* ((tags-str (match-string 5)))
+                         (string-split (string-trim tags-str) ":" t))))
             (when (and title
                        (seq-intersection or-zettel-meta-heading-tags tags))
               (when (string= title keyword)
