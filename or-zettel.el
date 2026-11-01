@@ -4,7 +4,7 @@
 ;;
 ;; Author: Taro Sato <okomestudio@gmail.com>
 ;; URL: https://github.com/okomestudio/or-zettel
-;; Version: 0.3.2
+;; Version: 0.3.3
 ;; Keywords: org-roam, convenience
 ;; Package-Requires: ((emacs "31.1") (org "9.8.10") (org-roam "2.3.1"))
 ;;
@@ -202,9 +202,10 @@ Leaves point ready for typing at the end of the new tag."
     (save-restriction
       (widen)
       (goto-char (point-min))
+
       (unless (re-search-forward re-heading nil t)
-        (goto-char (point-max))
-        (insert (concat "\n* " or-zettel-relationship-section)))
+        (or-zettel-meta-insert or-zettel-relationship-section))
+
       (org-end-of-meta-data nil)
       (let* ((start-pos (point))
              (end-pos (save-excursion
